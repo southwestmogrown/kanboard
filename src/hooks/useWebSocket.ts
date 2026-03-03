@@ -3,7 +3,35 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import type { WSMessage } from "@/types";
 
-const WS_URL = process.env.NEXT_PUBLIC_WS_URL || "ws://localhost:3001";
+function resolveWebSocketUrl(): string | null {
+  const configuredUrl = process.env.NEXT_PUBLIC_WS_URL?.trim();
+
+  if (!configuredUrl) {
+    if (typeof window !== "undefined") {
+      const isLocalhost =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+
+      if (isLocalhost) return "ws://localhost:3001";
+    }
+
+    return null;
+  }
+
+  if (configuredUrl.startsWith("ws://") || configuredUrl.startsWith("wss://")) {
+    return configuredUrl;
+  }
+
+  if (configuredUrl.startsWith("https://")) {
+    return configuredUrl.replace("https://", "wss://");
+  }
+
+  if (configuredUrl.startsWith("http://")) {
+    return configuredUrl.replace("http://", "ws://");
+  }
+
+  return `wss://${configuredUrl}`;
+}
 
 /**
  * Hook that manages a WebSocket connection to the collaboration server.
@@ -30,10 +58,19 @@ export function useWebSocket(
   useEffect(() => {
     if (!boardId) return;
 
+    const wsUrl = resolveWebSocketUrl();
+    if (!wsUrl) {
+      console.error(
+        "WebSocket URL is not configured. Set NEXT_PUBLIC_WS_URL in your deployment environment.",
+      );
+      setConnected(false);
+      return;
+    }
+
     let shouldReconnect = true;
 
     const connect = () => {
-      const ws = new WebSocket(WS_URL);
+      const ws = new WebSocket(wsUrl);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -51,9 +88,15 @@ export function useWebSocket(
         }
       };
 
-      ws.onclose = () => {
+      ws.onclose = (event) => {
         setConnected(false);
         wsRef.current = null;
+
+        if (!event?.wasClean) {
+          console.warn(
+            `WebSocket closed unexpectedly (code=${event?.code ?? "n/a"}, reason=${event?.reason || "n/a"})`,
+          );
+        }
 
         if (shouldReconnect) {
           const delay = Math.min(
@@ -66,6 +109,7 @@ export function useWebSocket(
       };
 
       ws.onerror = () => {
+        console.error(`WebSocket error for URL: ${wsUrl}`);
         ws.close();
       };
     };
