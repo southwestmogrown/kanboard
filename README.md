@@ -170,10 +170,62 @@ kanboard/
 │   │   └── session.ts         # Session helper
 │   ├── types/
 │   │   └── index.ts           # Shared TypeScript types
-│   └── middleware.ts           # Route protection
+│   └── proxy.ts                # Route protection
+├── .github/
+│   └── workflows/
+│       ├── ci.yml              # Lint, typecheck, unit tests, build
+│       └── deploy.yml          # Vercel + Railway deploy jobs
+├── railway.json                # Railway WS deploy config
+├── vercel.json                 # Vercel app config
 ├── .env.example
 └── package.json
 ```
+
+## Deployment (GitHub + Vercel + Railway)
+
+This repo includes GitHub Actions workflows for CI and deployment:
+
+- `.github/workflows/ci.yml` runs on PRs and pushes to `main`
+- `.github/workflows/deploy.yml` deploys:
+  - Next.js app to **Vercel**
+  - WebSocket service to **Railway**
+
+### 1) Required GitHub Secrets
+
+Add these in **GitHub → Settings → Secrets and variables → Actions**:
+
+- `VERCEL_TOKEN`
+- `VERCEL_ORG_ID`
+- `VERCEL_PROJECT_ID`
+- `RAILWAY_TOKEN`
+
+If Vercel secrets are missing, only the Railway job is skipped. If Railway secret is missing, only the Railway deploy is skipped.
+
+### 2) Vercel setup
+
+1. Import this GitHub repo in Vercel
+2. Set production environment variables in Vercel:
+   - `DATABASE_URL`
+   - `AUTH_SECRET`
+   - `AUTH_URL` (your production domain)
+   - `NEXT_PUBLIC_WS_URL` (your Railway WebSocket URL, `wss://...`)
+   - OAuth secrets if enabled
+3. Copy `VERCEL_ORG_ID` and `VERCEL_PROJECT_ID` from Vercel project settings into GitHub secrets
+
+### 3) Railway setup (WebSocket service)
+
+1. Create a Railway service from this repo
+2. Ensure it uses `railway.json` (`startCommand: npm run start:ws`)
+3. Set env vars in Railway:
+   - `NODE_ENV=production`
+4. Railway provides `PORT` automatically; `server/ws.ts` supports it
+5. Add `RAILWAY_TOKEN` to GitHub secrets
+
+### 4) Deploy flow
+
+- Push to `main` → CI runs
+- Deploy workflow runs automatically
+- You can also trigger deploy manually from **Actions → Deploy → Run workflow**
 
 ## API Reference
 
