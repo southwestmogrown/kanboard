@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import Column from "@/components/Column";
 import InviteModal from "@/components/InviteModal";
 import { useWebSocket } from "@/hooks/useWebSocket";
@@ -113,6 +113,28 @@ export default function Board({ initialData }: BoardProps) {
   }, []);
 
   const { send, connected } = useWebSocket(board.id, handleWSMessage);
+
+  useEffect(() => {
+    if (connected) return;
+
+    const syncBoard = async () => {
+      try {
+        const res = await fetch(`/api/boards/${board.id}`, {
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const latest: BoardFull = await res.json();
+        setBoard(latest);
+      } catch {
+        // ignore transient network errors while disconnected
+      }
+    };
+
+    void syncBoard();
+    const intervalId = setInterval(syncBoard, 4000);
+
+    return () => clearInterval(intervalId);
+  }, [board.id, connected]);
 
   // ── CRUD actions (hit API, optimistic update, broadcast via WS) ─
 

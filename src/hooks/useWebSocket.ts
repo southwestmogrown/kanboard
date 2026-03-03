@@ -16,6 +16,10 @@ export function useWebSocket(
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
+  const reconnectTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  );
+  const reconnectAttemptsRef = useRef(0);
   const [connected, setConnected] = useState(false);
 
   // Keep callback ref fresh without re-triggering effect
@@ -26,33 +30,65 @@ export function useWebSocket(
   useEffect(() => {
     if (!boardId) return;
 
-    const ws = new WebSocket(WS_URL);
-    wsRef.current = ws;
+    let shouldReconnect = true;
 
-    ws.onopen = () => {
-      setConnected(true);
-      ws.send(JSON.stringify({ type: "join-board", boardId, payload: {} }));
+    const connect = () => {
+      const ws = new WebSocket(WS_URL);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        setConnected(true);
+        ws.send(JSON.stringify({ type: "join-board", boardId, payload: {} }));
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg: WSMessage = JSON.parse(event.data);
+          onMessageRef.current(msg);
+        } catch {
+          console.error("Failed to parse WS message");
+        }
+      };
+
+      ws.onclose = () => {
+        setConnected(false);
+        wsRef.current = null;
+
+        if (shouldReconnect) {
+          const delay = Math.min(
+            1000 * 2 ** reconnectAttemptsRef.current,
+            5000,
+          );
+          reconnectAttemptsRef.current += 1;
+          reconnectTimeoutRef.current = setTimeout(connect, delay);
+        }
+      };
+
+      ws.onerror = () => {
+        ws.close();
+      };
     };
 
-    ws.onmessage = (event) => {
-      try {
-        const msg: WSMessage = JSON.parse(event.data);
-        onMessageRef.current(msg);
-      } catch {
-        console.error("Failed to parse WS message");
-      }
-    };
-
-    ws.onclose = () => {
-      setConnected(false);
-    };
+    connect();
 
     return () => {
-      if (ws.readyState === WebSocket.OPEN) {
+      shouldReconnect = false;
+
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+
+      const ws = wsRef.current;
+
+      if (ws?.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "leave-board", boardId, payload: {} }));
       }
-      ws.close();
+
+      ws?.close();
       wsRef.current = null;
+      setConnected(false);
     };
   }, [boardId]);
 
