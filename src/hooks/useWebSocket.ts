@@ -63,7 +63,6 @@ export function useWebSocket(
       console.error(
         "WebSocket URL is not configured. Set NEXT_PUBLIC_WS_URL in your deployment environment.",
       );
-      setConnected(false);
       return;
     }
 
