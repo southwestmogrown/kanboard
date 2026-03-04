@@ -7,6 +7,7 @@
  * clients in the same room so the UI stays in sync.
  */
 
+import { createServer } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 
 interface WSMessage {
@@ -18,7 +19,14 @@ interface WSMessage {
 
 const PORT = Number(process.env.PORT || process.env.WS_PORT) || 3001;
 
-const wss = new WebSocketServer({ port: PORT });
+// Create an HTTP server so Railway's reverse proxy can health-check
+// and properly upgrade connections to WebSocket.
+const server = createServer((_req, res) => {
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("OK");
+});
+
+const wss = new WebSocketServer({ server });
 
 // boardId → Set of connected clients
 const rooms = new Map<string, Set<WebSocket>>();
@@ -101,4 +109,6 @@ wss.on("connection", (ws) => {
   });
 });
 
-console.log(`🔌 WebSocket server running on ws://localhost:${PORT}`);
+server.listen(PORT, () => {
+  console.log(`🔌 WebSocket server running on ws://localhost:${PORT}`);
+});
